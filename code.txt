@@ -1,0 +1,147 @@
+1. 各种滤波器对高斯噪声和椒盐噪声的恢复
+img=im2double(imread('lena.bmp'));
+%img=imread('lena.bmp');
+img_noise=imnoise(img,'salt & pepper',0.1);
+
+%% 逆滤波
+% F=fftshift(fft2(img_noise));
+% [m,n]=size(img_noise);
+% k=0.0025;
+% H=[];
+% for i=1:m;
+%     for j=1:n
+%         p=((i-m/2)^2+(j-n/2)^2)^(5/6);
+%         H(i,j)=exp((-k)*p);
+%     end
+% end
+% G=F.*H;
+% out=uint8(abs(ifft2(fftshift(G))));
+% imwrite(out,'reverse_gaussian.jpg','jpg');
+% figure;
+% subplot(1,2,1);
+% imshow(img_noise);
+% title('noise pic');
+% subplot(1,2,2);
+% imshow(out);
+% title('after inverse filtering');
+
+
+%%  维纳滤波
+%F=fftshift(fft2(img_noise));
+%[m,n]=size(img_noise);
+psf=fspecial('motion',21,11);
+blurred = imfilter(img, psf, 'conv', 'circular');
+blurred_noise=imnoise(blurred,'gaussian',0,0.0001);
+noise_var=0.0001;
+%H=psf2otf(psf,size(img_noise));
+nsr=noise_var/var(img(:)); %信噪比
+Y=deconvwnr(blurred_noise,psf,nsr);
+imshow(Y);
+
+% %%均值滤波
+% [m,n]=size(img_noise);
+% img_filter=[];
+% img_noise=double(img_noise);
+% a=zeros(1,n+2);
+% b=zeros(m,1);
+% img_noise=[a;b,img_noise,b;a];
+% for i=2:m-1;
+%     for j=2:n-1;
+%         img_filter(i,j)= (img_noise(i,j)+img_noise(i-1,j-1)+img_noise(i-1,j)+img_noise(i-1,j+1)+img_noise(i,j-1)+img_noise(i,j+1)+img_noise(i+1,j-1)+img_noise(i+1,j)+img_noise(i+1,j+1))/9;
+%     end
+% end
+% img_filter=uint8(img_filter);
+% figure;
+% subplot(1,2,1);
+% imshow(uint8(img_noise));
+% title('image with noise');
+% subplot(1,2,2);
+% imshow(img_filter);
+% title('arithmetic mean filter');       
+
+% %%几何均值滤波器
+% [m,n]=size(img_noise);
+% img_filter=[];
+% img_noise=double(img_noise);
+% for i=2:m-1;
+%     for j=2:n-1;
+%         img_filter(i,j)= (img_noise(i,j)*img_noise(i-1,j-1)*img_noise(i-1,j)*img_noise(i-1,j+1)*img_noise(i,j-1)*img_noise(i,j+1)*img_noise(i+1,j-1)*img_noise(i+1,j)*img_noise(i+1,j+1))^(1/9);
+%     end
+% end
+% img_filter=uint8(img_filter);
+% figure;
+% subplot(1,2,1);
+% imshow(uint8(img_noise));
+% title('image with noise');
+% subplot(1,2,2);
+% imshow(img_filter);
+% title('geomtrical mean filter'); 
+
+% %%谐波均值滤波器
+% [m,n]=size(img_noise);
+% img_filter=[];
+% img_noise=double(img_noise);
+% a=zeros(1,n+2);
+% b=zeros(m,1);
+% img_noise=[a;b,img_noise,b;a];
+% for i=2:m+1;
+%     for j=2:n+1;
+%         img_filter(i-1,j-1)= 9/((1/img_noise(i,j))+(1/img_noise(i-1,j-1))+(1/img_noise(i-1,j))+(1/img_noise(i-1,j+1))+(1/img_noise(i,j-1))+(1/img_noise(i,j+1))+(1/img_noise(i+1,j-1))+(1/img_noise(i+1,j))+(1/img_noise(i+1,j+1)));
+%     end
+% end
+% img_filter=uint8(img_filter);
+% figure;
+% subplot(1,2,1);
+% imshow(uint8(img_noise));
+% title('image with noise');
+% subplot(1,2,2);
+% imshow(img_filter);
+% title('geomtrical mean filter'); 
+
+2. 简化最小二乘和约束最小二乘滤波
+%%模糊滤波器
+h=[];
+[m,n]=size(img);
+for i=1:m;
+    for j=1:n;
+        h(i,j)=(1/pi*(0.1*i+0.1*j))*sin(pi*(0.1*i+0.1*j))*exp(-sqrt(-1)*pi*(0.1*i+0.1*j));
+    end
+end
+f=fftshift(fft2(img));
+g=h.*f;
+% out=ifft2(fftshift(g));
+% out=256.*out./max(max(out));
+% out=uint8(real(out));
+ff=[];
+p=[0,-1,-0;-1,4,-1;0,-1,0];
+k=0.1;
+%gama=0.1;
+model1=zeros(514,514);
+model2=zeros(514,514);
+p=fftshift(fft2(p));
+model1(1:3,1:3)=p;
+model2(1:512,1:512)=h;
+nsr=[];
+count=1;
+for gama=0:0.05:1;
+    ff=[];
+    for i=1:m;
+        for j=1:n;
+            %ff(i,j)=((1/h(i,j)))*(abs(h(i,j))^2/(abs(h(i,j))^2+k))*g(i,j);      %简化维纳滤波器
+            ff(i,j)=(model2(i,j)'/(abs(model2(i,j))^2+gama*model1(i,j)))*g(i,j);    %约束最小二乘
+        end
+    end
+    ff=ifft2(ifftshift(ff));
+    ff=256.*ff./max(max(ff));
+    ff=uint8(real(ff));
+    nsr(count)=sum(double(img(:)).^2)/(sum(double(ff(:)).^2)-sum(double(img(:)).^2));
+    count=count+1;
+end
+id=find(max(nsr))
+figure;
+subplot(1,2,1);
+imshow(img);
+title('original image');
+subplot(1,2,2);
+imshow(ff)
+title('after filtering');
